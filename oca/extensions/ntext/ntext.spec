@@ -1570,8 +1570,8 @@
 @ stdcall RtlAcquireSRWLockShared(ptr)
 @ stdcall RtlAddSIDToBoundaryDescriptor(ptr ptr)
 @ stdcall RtlCloseStringHandle(long long)
-@ stdcall RtlCmDecodeMemIoResource(ptr ptr)
-@ stdcall RtlCmEncodeMemIoResource(ptr long int64 int64)
+; @ stdcall RtlCmDecodeMemIoResource(ptr ptr)
+; @ stdcall RtlCmEncodeMemIoResource(ptr long int64 int64)
 @ stdcall RtlCreateBoundaryDescriptor(ptr long)
 @ stdcall RtlCreateServiceSid(ptr ptr ptr) ;Cause delayed load error
 @ stdcall RtlCreateUserStack(long long long long long ptr)

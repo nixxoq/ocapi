@@ -16,6 +16,8 @@ Author:
 
 Revision History:
 
+    NixxO 02-August-2026 - Add DisableOsSpoofing feature
+
 --*/
 
 #include "main.h"
@@ -579,6 +581,69 @@ GetProcessFullPathByPid(
 }
 
 BOOLEAN
+ReadDisableOsSpoofing(
+    PWSTR FilePath
+)
+{
+    WCHAR SanitizedPath[MAX_PATH];
+    WCHAR SubKeyPath[MAX_PATH];
+    WCHAR buffer[256];
+
+    UNICODE_STRING KeyName;
+    UNICODE_STRING ValueName;
+    OBJECT_ATTRIBUTES Obj;
+    HANDLE Handle;
+
+    NTSTATUS status;
+    PKEY_VALUE_PARTIAL_INFORMATION KeyInfo;
+    ULONG informationLength;
+
+    if (!FilePath) return FALSE;
+
+    RtlZeroMemory(buffer, sizeof(buffer));
+    KeyInfo = (PKEY_VALUE_PARTIAL_INFORMATION)buffer;
+
+    SanitizeFilenameForRegistry(FilePath, SanitizedPath, MAX_PATH);
+
+    swprintf(
+        SubKeyPath,
+        L"SOFTWARE\\OCA\\Settings\\%s",
+        SanitizedPath
+    );
+
+    RtlInitUnicodeString(&ValueName, L"DisableOsSpoofing");
+    RtlInitUnicodeString(&KeyName, SubKeyPath);
+
+    InitializeObjectAttributes(
+        &Obj,
+        &KeyName,
+        OBJ_CASE_INSENSITIVE,
+        HKEY_CURRENT_USER,
+        NULL
+    );
+
+    status = NtOpenKey(&Handle, KEY_READ, &Obj);
+    if (!NT_SUCCESS(status))
+        return FALSE;
+
+    status = NtQueryValueKey(
+        Handle,
+        &ValueName,
+        KeyValuePartialInformation,
+        KeyInfo,
+        sizeof(buffer),
+        &informationLength
+    );
+    NtClose(Handle);
+
+    if (NT_SUCCESS(status) && KeyInfo->Type == REG_DWORD)
+    {
+        return *((PDWORD)KeyInfo->Data) != 0;
+    }
+    return FALSE;
+}
+
+BOOLEAN
 ReadEmulatedVersion(
     PUNICODE_STRING EmulatedVersion,
     PWSTR FilePath
@@ -1101,7 +1166,7 @@ RtlGetVersionAppCompat(
 		RtlZeroMemory(&EmulatedVersionGlobal, sizeof(EmulatedVersionGlobal));
 		RtlZeroMemory(&ParentPeb, sizeof(PEB));		
 		
-        if (GetParentProcessPeb(&parentHandle, &ParentPeb, &IsWow64Parent))
+		if (GetParentProcessPeb(&parentHandle, &ParentPeb, &IsWow64Parent))
         {
             if (IsWow64Parent)
             {
@@ -1124,11 +1189,22 @@ RtlGetVersionAppCompat(
                 Peb->OSPlatformId   = ParentPeb.OSPlatformId;
             }
         }
-		//Check if the global emulation version key is filled
-		if(ReadEmulatedVersion(&EmulatedVersionGlobal, NULL)){
-			ParseEmulationVersionAndApplyOnPeb(EmulatedVersionGlobal, Peb);
-			RtlFreeUnicodeString(&EmulatedVersionGlobal);	
-			return RtlGetVersionInternal(lpVersionInformation);			
+		
+		if (ReadDisableOsSpoofing(emuPath))
+		{
+			// Spoof as Server 2003
+			Peb->OSMajorVersion = 5;
+			Peb->OSMinorVersion = 2;
+			Peb->OSBuildNumber = 3790;
+		}
+		else
+		{
+			//Check if the global emulation version key is filled
+			if(ReadEmulatedVersion(&EmulatedVersionGlobal, NULL)){
+				ParseEmulationVersionAndApplyOnPeb(EmulatedVersionGlobal, Peb);
+				RtlFreeUnicodeString(&EmulatedVersionGlobal);	
+				return RtlGetVersionInternal(lpVersionInformation);			
+			}
 		}
 
 		if (!CheckIsMsiOrServicesExec(emuPath, TRUE))

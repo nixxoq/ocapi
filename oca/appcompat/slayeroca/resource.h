@@ -17,6 +17,7 @@
 #define IDC_REMOVEALL              1011
 #define IDC_REMOVE                 1012
 #define IDC_ENABLED_LAYERS         1013
+#define IDC_CHKDISABLEOSSPOOFING   1014
 
 #define IDS_DESCRIPTION 101
 

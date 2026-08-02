@@ -1,5 +1,5 @@
 /*
- * PROJECT:     ReactOS Compatibility Layer Shell Extension
+ * PROJECT:     One-Core-API Compatibility Layer Shell Extension
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
  * PURPOSE:     CLayerUIPropPage definition
  * COPYRIGHT:   Copyright 2015-2019 Mark Jansen (mark.jansen@reactos.org)
@@ -68,6 +68,7 @@ protected:
     DWORD m_LayerQueryFlags;
     DWORD m_RegistryOSMode, m_OSMode;
     DWORD m_RegistryEnabledLayers, m_EnabledLayers;
+    DWORD m_RegistryDisableOsSpoofing, m_DisableOsSpoofing;
     CSimpleArray<CString> m_RegistryCustomLayers;
 
 public:
@@ -76,6 +77,7 @@ public:
     BEGIN_MSG_MAP(CLayerUIPropPage)
         MESSAGE_HANDLER(WM_INITDIALOG, OnInitDialog)
         COMMAND_RANGE_HANDLER(IDC_CHKRUNCOMPATIBILITY, IDC_CHKDISABLEVISUALTHEMES, OnCtrlCommand)
+        COMMAND_ID_HANDLER(IDC_CHKDISABLEOSSPOOFING, OnCtrlCommand)
         COMMAND_ID_HANDLER(IDC_EDITCOMPATIBILITYMODES, OnEditModes)
         NOTIFY_CODE_HANDLER(NM_CLICK, OnClickNotify)
         NOTIFY_CODE_HANDLER(NM_RETURN, OnClickNotify)

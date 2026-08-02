@@ -1,6 +1,6 @@
 /*++
 
-Copyright (c) 2018 Shorthorn Project
+Copyright (c) 2026 Shorthorn Project
 
 Module Name:
 
@@ -15,6 +15,8 @@ Author:
     Skulltrail 07-November-2024
 
 Revision History:
+
+    NixxO 02-August-2026 - Add DisableOsSpoofing feature
 
 --*/
  
@@ -406,6 +408,8 @@ NtQueryLicenseValue(
     return status;
 }
 
+extern NTSTATUS NTAPI RtlGetVersionAppCompat(OUT PRTL_OSVERSIONINFOW lpVersionInformation);
+
 void 
 WINAPI 
 RtlGetNtVersionNumbers(
@@ -414,12 +418,18 @@ RtlGetNtVersionNumbers(
   LPDWORD build
 )
 {
-	if(major)
-		*major = 6;
-	if(minor)
-		*minor = 0;
-	if(build)
-		*build = 3790;
+    RTL_OSVERSIONINFOW VersionInfo = { sizeof(RTL_OSVERSIONINFOW) };
+    PPEB Peb;
+    
+    RtlGetVersionAppCompat(&VersionInfo);
+    
+    Peb = NtCurrentPeb();
+    if(major)
+        *major = Peb->OSMajorVersion;
+    if(minor)
+        *minor = Peb->OSMinorVersion;
+    if(build)
+        *build = Peb->OSBuildNumber;
 }
 
 static BOOL grow_logical_proc_buf(SYSTEM_LOGICAL_PROCESSOR_INFORMATION **pdata,
@@ -957,15 +967,24 @@ RtlGetDeviceFamilyInfoEnum(
     _Out_opt_ DWORD *pulDeviceForm
 )
 {
-	if(pullUAPInfo){
-		*pullUAPInfo = 0x000A000038391770;
-	}
-	
-	if(pulDeviceFamily){
-		*pulDeviceFamily = DEVICEFAMILYINFOENUM_DESKTOP;
-	}
-	
-	if(pulDeviceForm){
-		*pulDeviceForm = 0;
-	}	
+    RTL_OSVERSIONINFOW VersionInfo = { sizeof(RTL_OSVERSIONINFOW) };
+    PPEB Peb;
+    
+    RtlGetVersionAppCompat(&VersionInfo);
+
+    Peb = NtCurrentPeb();
+    if(pullUAPInfo){
+        *pullUAPInfo = ((ULONGLONG)Peb->OSMajorVersion << 48) |
+                       ((ULONGLONG)Peb->OSMinorVersion << 32) |
+                       ((ULONGLONG)Peb->OSBuildNumber << 16) |
+                       (0x1770);
+    }
+    
+    if(pulDeviceFamily){
+        *pulDeviceFamily = DEVICEFAMILYINFOENUM_DESKTOP;
+    }
+    
+    if(pulDeviceForm){
+        *pulDeviceForm = 0;
+    }   
 }

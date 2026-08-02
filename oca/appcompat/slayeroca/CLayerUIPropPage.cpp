@@ -2,7 +2,7 @@
  * PROJECT:     One-Core-API Compatibility Layer Shell Extension
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
  * PURPOSE:     CLayerUIPropPage implementation
- * COPYRIGHT:   Copyright 2015-2019 Mark Jansen (mark.jansen@One-Core-API.org)
+ * COPYRIGHT:   Copyright 2015-2019 Mark Jansen (mark.jansen@reactos.org)
  */
 
 #include "precomp.h"
@@ -197,6 +197,88 @@ BOOL ReadFromRegistry(TCHAR* outValue, DWORD outSize, CString m_Filename)
     }
 
     result = RegQueryValueEx(hKey, _T("CompatWindowsVersion"), NULL, &type,
+                             (BYTE*)outValue, &outSize);
+    RegCloseKey(hKey);
+
+    return (result == ERROR_SUCCESS);
+}
+
+void DisableOsSpoofingReg(DWORD disableOsSpoofing, CString m_Filename)
+{
+    HKEY hKey;
+    LONG result;
+    TCHAR subKey[MAX_PATH];
+    TCHAR sanitizedName[MAX_PATH];
+
+    SanitizeFilenameForRegistry(m_Filename, sanitizedName, MAX_PATH);
+    _stprintf(subKey, _T("SOFTWARE\\OCA\\Settings\\%s"), sanitizedName);
+
+    result = RegCreateKeyEx(
+        HKEY_LOCAL_MACHINE,
+        subKey,
+        0, NULL, 0,
+        KEY_SET_VALUE, NULL, &hKey, NULL
+    );
+
+    if (result == ERROR_SUCCESS)
+    {
+        RegSetValueEx(hKey, _T("DisableOsSpoofing"), 0, REG_DWORD,
+            (const BYTE*)&disableOsSpoofing,
+            sizeof(DWORD));
+
+        RegCloseKey(hKey);
+    }
+
+#ifdef _M_AMD64
+    {
+        HKEY Wow64hKey;
+        _stprintf(subKey, _T("SOFTWARE\\Wow6432Node\\OCA\\Settings\\%s"), sanitizedName);
+
+        result = RegCreateKeyEx(
+            HKEY_LOCAL_MACHINE,
+            subKey,
+            0, NULL, 0,
+            KEY_SET_VALUE, NULL, &Wow64hKey, NULL
+        );
+
+        if (result == ERROR_SUCCESS)
+        {
+            RegSetValueEx(Wow64hKey, _T("DisableOsSpoofing"), 0, REG_DWORD,
+                (const BYTE*)&disableOsSpoofing,
+                sizeof(DWORD));
+            RegCloseKey(Wow64hKey);
+        }
+    }
+#endif
+}
+
+BOOL ReadDisableOsSpoofingReg(DWORD* outValue, CString m_Filename)
+{
+    HKEY hKey;
+    LONG result;
+    TCHAR subKey[MAX_PATH];
+    TCHAR sanitizedName[MAX_PATH];
+    DWORD type = REG_DWORD;
+    DWORD outSize = sizeof(DWORD);
+
+    SanitizeFilenameForRegistry(m_Filename, sanitizedName, MAX_PATH);
+
+    _stprintf(subKey, _T("SOFTWARE\\OCA\\Settings\\%s"), sanitizedName);
+
+    result = RegOpenKeyEx(HKEY_LOCAL_MACHINE, subKey, 0, KEY_READ, &hKey);
+    if (result != ERROR_SUCCESS)
+    {
+#ifdef _M_AMD64
+        _stprintf(subKey, _T("SOFTWARE\\Wow6432Node\\OCA\\Settings\\%s"), sanitizedName);
+        result = RegOpenKeyEx(HKEY_LOCAL_MACHINE, subKey, 0, KEY_READ, &hKey);
+        if (result != ERROR_SUCCESS)
+            return FALSE;
+#else
+        return FALSE;
+#endif
+    }
+
+    result = RegQueryValueEx(hKey, _T("DisableOsSpoofing"), NULL, &type,
                              (BYTE*)outValue, &outSize);
     RegCloseKey(hKey);
 
@@ -445,7 +527,19 @@ int CLayerUIPropPage::OnSetActive()
     // Inicializa vars registradas
     m_RegistryOSMode = 0;
     m_RegistryEnabledLayers = 0;
+    m_RegistryDisableOsSpoofing = 0;
     m_RegistryCustomLayers.RemoveAll();
+
+    DWORD disableOsSpoofing = 0;
+    if (ReadDisableOsSpoofingReg(&disableOsSpoofing, m_Filename) && disableOsSpoofing)
+    {
+        CheckDlgButton(IDC_CHKDISABLEOSSPOOFING, BST_UNCHECKED);
+        m_RegistryDisableOsSpoofing = 1;
+    }
+    else
+    {
+        CheckDlgButton(IDC_CHKDISABLEOSSPOOFING, BST_CHECKED);
+    }
 
     TCHAR regValue[256] = {0};
     if (ReadFromRegistry(regValue, sizeof(regValue), m_Filename))
@@ -493,6 +587,7 @@ int CLayerUIPropPage::OnSetActive()
     // HasChanges() comece consistente.
     m_OSMode = m_RegistryOSMode;
     m_EnabledLayers = m_RegistryEnabledLayers;
+    m_DisableOsSpoofing = m_RegistryDisableOsSpoofing;
     m_CustomLayers = m_RegistryCustomLayers;
 
     UpdateControls();
@@ -521,6 +616,9 @@ BOOL CLayerUIPropPage::HasChanges() const
         return TRUE;
 
     if (m_RegistryOSMode != m_OSMode)
+        return TRUE;
+
+    if (m_RegistryDisableOsSpoofing != m_DisableOsSpoofing)
         return TRUE;
 
     if (!ArrayEquals(m_RegistryCustomLayers, m_CustomLayers))
@@ -570,8 +668,15 @@ int CLayerUIPropPage::OnApply()
 
     // Depois de gravar, não há mais "modificações pendentes"
     // sincroniza m_* com os valores atuais e limpa o flag Modified
+    
+    BOOL bSpoofingChecked = (IsDlgButtonChecked(IDC_CHKDISABLEOSSPOOFING) == BST_CHECKED);
+    DWORD newDisableOsSpoofing = bSpoofingChecked ? 0 : 1;
+    DisableOsSpoofingReg(newDisableOsSpoofing, m_Filename);
+    m_RegistryDisableOsSpoofing = newDisableOsSpoofing;
+
     m_OSMode = m_RegistryOSMode;
     m_EnabledLayers = m_RegistryEnabledLayers;
+    m_DisableOsSpoofing = m_RegistryDisableOsSpoofing;
     m_CustomLayers = m_RegistryCustomLayers;
 
     SetModified(FALSE); // limpa o botão Aplicar
@@ -632,6 +737,8 @@ void CLayerUIPropPage::UpdateControls()
         ::ShowWindow(GetDlgItem(g_Layers[n].Id), SW_SHOW);
     }
 
+    m_DisableOsSpoofing = (IsDlgButtonChecked(IDC_CHKDISABLEOSSPOOFING) == BST_CHECKED) ? 0 : 1;
+
     CStringW customLayers;
     for (int j = 0; j < m_CustomLayers.GetSize(); ++j)
     {
@@ -660,7 +767,7 @@ LRESULT CLayerUIPropPage::OnEditModes(WORD wNotifyCode, WORD wID, HWND hWndCtl, 
 LRESULT CLayerUIPropPage::OnClickNotify(INT uCode, LPNMHDR hdr, BOOL& bHandled)
 {
     if (hdr->idFrom == IDC_INFOLINK)
-        ShellExecute(NULL, L"open", L"https://One-Core-API.org/forum/viewforum.php?f=4", NULL, NULL, SW_SHOW);
+        ShellExecute(NULL, L"open", L"https://reactos.org/forum/viewforum.php?f=4", NULL, NULL, SW_SHOW);
     return 0;
 }
 
